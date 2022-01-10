@@ -40,6 +40,6 @@
 
   - name: vim-install
     apk:
-     name: vim
+     name: vim  # or take nano, your pick
      state: present
     become: true
