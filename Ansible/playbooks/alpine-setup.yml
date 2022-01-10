@@ -1,0 +1,45 @@
+- name: general-setup
+  hosts: alpine
+  tasks:
+  - name: enable-community-repo
+    template:
+     src: ../templates/alpine-repos
+     dest: /etc/apk/repositories
+    become: true
+
+  - name: ssh-demon-disabled-password-authentication
+    template:
+     src: ../templates/sshd_config
+     dest: /etc/ssh/sshd_config
+    become: true
+
+  - name: update-and-upgrade
+    apk:
+     update_cache: yes
+     upgrade: yes
+    become: true
+
+  - name: guest-agent-install
+    apk:
+     name: qemu-guest-agent
+     state: present
+    become: true
+
+  - name: guest-agent-start
+    service:
+     name: qemu-guest-agent
+     enabled: true
+     state: started
+    become: true
+
+  - name: pip-install
+    apk:
+     name: py3-pip
+     state: present
+    become: true
+
+  - name: vim-install
+    apk:
+     name: vim
+     state: present
+    become: true

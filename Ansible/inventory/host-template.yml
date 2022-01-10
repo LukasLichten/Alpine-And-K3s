@@ -1,0 +1,17 @@
+all:
+ children:
+  alpine:
+   vars:
+      ansible_python_interpreter: auto_silent
+      ansible_become_method: doas
+   children:
+    kube:
+     vars:
+      k3s_token: "[Token]"
+     children:
+      master:
+       hosts:
+        init:
+         ansible_host: 0.0.0.0 # insert the ip of the remote machine
+         ansible_user: "[Username]"
+         ansible_become_pass: "[store this in a secret... Or not]"
