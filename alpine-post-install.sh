@@ -1,5 +1,5 @@
 # To download and use:
-# cat https://github.com/TheLichten/Alpine-And-K3s >> alpine-post-install
+# cat https://raw.githubusercontent.com/TheLichten/Alpine-And-K3s/master/alpine-post-install.sh >> alpine-post-install
 # chmod u+x alpine-post-install
 # alpine-post-install [Username] [Password]
 
