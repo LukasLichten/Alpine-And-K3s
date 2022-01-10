@@ -1,5 +1,6 @@
 # To download and use:
-# cat https://raw.githubusercontent.com/TheLichten/Alpine-And-K3s/master/alpine-post-install.sh >> alpine-post-install
+# apk add curl
+# curl https://raw.githubusercontent.com/TheLichten/Alpine-And-K3s/master/alpine-post-install.sh > alpine-post-install
 # chmod u+x alpine-post-install
 # alpine-post-install [Username] [Password]
 
@@ -12,7 +13,7 @@ apk add doas
 
 # Creating user
 adduser -D $1
-passwd -d $2 $1
+passwd -d '$2' $1
 adduser $1 wheel
 passwd -l root
 
