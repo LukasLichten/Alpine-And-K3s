@@ -1,4 +1,4 @@
 # k3s options
 export PATH="/usr/libexec/cni/:$PATH"
 K3S_EXEC="server"
-K3S_OPTS="--node-taint CriticalAddonsOnly=true:NoExecute"
+K3S_OPTS="--node-taint CriticalAddonsOnly=true:NoExecute --kube-apiserver-arg service-node-port-range=50-32767"
