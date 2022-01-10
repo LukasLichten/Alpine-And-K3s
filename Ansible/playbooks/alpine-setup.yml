@@ -1,3 +1,7 @@
+# Besides requiring ansible to run this, you need community.general installed to use doas
+# run this command on your local machine:
+# ansible-galaxy collection install community.general
+
 - name: general-setup
   hosts: alpine
   tasks:

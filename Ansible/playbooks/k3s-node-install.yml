@@ -1,0 +1,98 @@
+# this installs all required components for k3s to function on a node
+- name: building-kluster
+  hosts: kube
+  tasks:
+  - name: cni-old
+    apk:
+     name: cni-plugins=0.9.1-r2 #due to flannel not being part of 1.0.1 for Alpine v3.15
+     no_cache: yes
+     state: present
+     repository: https://dl-cdn.alpinelinux.org/alpine/v3.14/community/
+    become: true
+
+  - name: dbus-just-in-case
+    apk:
+     name: dbus
+     no_cache: yes
+     state: present
+    become: true
+
+  - name: install-containerd
+    apk:
+     name: containerd
+     no_cache: yes
+     state: present
+    become: true
+
+  - name: download-k3s
+    apk:
+     name: k3s
+     no_cache: yes
+     state: present
+    become: true
+
+  - name: longhorn-requirements
+    apk:
+     name: bash curl findmnt grep gawk blkid lsblk
+     no_cache: yes
+     state: present
+    become: true
+
+  - name: longhorn-iscsi
+    apk:
+     name: open-iscsi open-iscsi-openrc
+     no_cache: yes
+     state: present
+    become: true
+
+  - name: longhorn-iscsi-start
+    service:
+     name: iscsid
+     enabled: yes
+     state: started
+    become: true
+
+  - name: longhorn-nfs
+    apk:
+     name: nfs-utils
+     no_cache: yes
+     state: present
+    become: true
+
+  - name: longhorn-openrc-rc-local
+    template:
+     src: ../templates/k3s/rc.local.start
+     dest: /etc/local.d/rc.local.start
+     mode: 'u+rwx'
+    become: true
+
+  - name: longhorn-local-service
+    service:
+     name: local
+     enabled: yes
+     state: restarted
+    become: true
+
+  - name: init.d
+    template:
+     src: ../templates/k3s/initd-k3s
+     dest: /etc/init.d/k3s
+    become: true
+
+- name: setting-up-as-server
+  hosts: masters
+  tasks:
+  - name: conf.d-node-join
+    template:
+     src: ../templates/k3s/confd-k3s-server
+     dest: /etc/conf.d/k3s
+    become: true
+
+- name: setting-up-as-agent
+  hosts: agents
+  tasks:
+  - name: conf.d-node-join-agent
+    template:
+     src: ../templates/k3s/confd-k3s-agent
+     dest: /etc/conf.d/k3s
+    become: true

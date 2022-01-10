@@ -1,0 +1,2 @@
+# /etc/local.d/rc.local.start
+mount --make-shared /

@@ -1,17 +1,26 @@
 all:
  children:
-  alpine:
+  alpine: # K3s allows building on different architectures (although alpine covers those too), but different OS's
    vars:
       ansible_python_interpreter: auto_silent
       ansible_become_method: doas
-   children:
-    kube:
+  children:
+    kube: 
      vars:
-      k3s_token: "[Token]"
+      k3s_token: "[Token]" # cat /var/lib/rancher/k3s/server/token
+      k3s_vip: 0.0.0.0 # the virtual ip under which the cluster will be available (kubectl)
+      net_interface: eth0 # In Alpine it is basically always eth0
+      kube_vip_version: "v0.4.1" # find newest version via this command: curl -sL https://api.github.com/repos/kube-vip/kube-vip/releases | jq -r ".[0].name"
      children:
-      master:
+      masters:
        hosts:
         init:
          ansible_host: 0.0.0.0 # insert the ip of the remote machine
          ansible_user: "[Username]"
          ansible_become_pass: "[store this in a secret... Or not]"
+        other_server:
+         ansible_host: 0.0.0.0 # same thing as above, including need for user and become password
+      agents:
+       hosts:
+        other_agent:
+         ansible_host: 0.0.0.0 # same thing as above, including need for user and become password

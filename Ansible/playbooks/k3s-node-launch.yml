@@ -1,0 +1,22 @@
+- name: start-k3s
+  hosts: kube
+  tasks:
+  - name: spin-up-service
+    service:
+     name: k3s
+     enabled: yes
+     state: restarted
+    become: true
+
+- name: server-nodes
+  hosts: masters
+  tasks:
+  - name: Sleep for 30 seconds
+    wait_for:
+      timeout: 30
+
+  - name: set-to-blank-conf
+    template:
+     src: ../templates/k3s/confd-k3s
+     dest: /etc/conf.d/k3s
+    become: true

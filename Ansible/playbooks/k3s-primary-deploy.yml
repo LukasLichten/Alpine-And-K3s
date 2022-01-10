@@ -1,0 +1,81 @@
+# This is where to start
+# 
+# First we pull up one node, our init node, so it is recommended to use "-l init" when running this playbook
+# 
+# And this might be a good spot to write down the design goals of this:
+# -Master nodes are tainted, only agents execute workloads
+# -Using embedded etcd as kubernetes database (3 master nodes recommended, check out https://etcd.io/docs/v3.5/faq/#what-is-failure-tolerance)
+# -Longhorn as main storage provider
+# -kube-vip to provide a High Available controllpane and load balancing
+# -Portainer (or maybe Rancher) as UI
+#
+# Even after joining the nodes further commands are required (helm and kubectl) to fully install everything
+
+- name: run-basic-conf
+  import_playbook: k3s-node-install.yml
+
+- name: initial-setup
+  hosts: init
+  tasks:
+  - name: create-manifest-folder
+    file:
+     path: /var/lib/rancher/k3s/server/manifests/
+     state: directory
+    become: true
+
+  - name: get-rbac-manifest
+    get_url:
+     url: https://kube-vip.io/manifests/rbac.yaml
+     dest: /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
+     force: yes
+    become: true
+
+  - name: add-lines-to-manifest
+    shell:
+     cmd: "echo '---' | tee -a /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml"
+    become: true
+
+  - name: start-containerd-service
+    service:
+     name: containerd
+     state: started
+    become: true
+
+  - name: get-image
+    shell:
+     cmd: ctr image pull ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
+    become: true
+
+  - name: generate-kubevip-manifest
+    shell:
+     cmd: ctr run --rm --net-host ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }} vip /kube-vip manifest daemonset --interface {{ net_interface }} --address {{ k3s_vip }} --inCluster --taint --controlplane --services --arp --leaderElection | tee -a /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
+    become: true
+
+  - name: del-image
+    shell:
+     cmd: ctr image rm ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
+    become: true
+  
+  - name: stop-containerd-service
+    service:
+     name: containerd
+     state: stopped
+    become: true
+
+  - name: conf.d-init
+    template:
+     src: ../templates/k3s/confd-k3s-init
+     dest: /etc/conf.d/k3s
+    become: true
+
+- name: run
+  import_playbook: k3s-node-launch.yml
+
+# get the kubectl file from this node and copy it onto your local machine
+# Use this on the remote (you need su privaleges most likely)
+# cat /etc/rancher/k3s/k3s.yaml
+# 
+# You need to most likely copy the data into ~/.kube/config
+# and change then the IP to the vip
+#
+# also use cat /var/lib/rancher/k3s/server/token to get the full token to insert before launching the other nodes
