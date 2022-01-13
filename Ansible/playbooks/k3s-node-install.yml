@@ -4,7 +4,7 @@
   tasks:
   - name: cni-old
     apk:
-     name: cni-plugins=0.9.1-r2 #due to flannel not being part of 1.0.1 for Alpine v3.15
+     name: cni-plugins=0.9.1-r2 #due to flannel not being part of 1.0.1-r0 for Alpine v3.15
      no_cache: yes
      state: present
      repository: https://dl-cdn.alpinelinux.org/alpine/v3.14/community/
