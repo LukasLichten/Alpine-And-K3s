@@ -47,3 +47,15 @@
      name: vim  # or take nano, your pick
      state: present
     become: true
+
+  - name: htop
+    apk:
+     name: htop
+     state: present
+    become: true
+
+  - name: neofetch-because-cool
+    apk:
+     name: neofetch
+     state: present
+    become: true

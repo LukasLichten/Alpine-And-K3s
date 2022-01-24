@@ -52,6 +52,27 @@
      state: started
     become: true
 
+    # The longhorn encrypted stuff is still experimental, as I have not gotten longhorn encrypted drives to actually work
+  - name: longhorn-crypt
+    apk:
+     name: cryptsetup cryptsetup-openrc
+     no_cache: yes
+     state: present
+    become: true
+
+  - name: longhorn-crypt-start
+    service:
+     name: dmcrypt
+     enabled: yes
+     state: started
+    become: true
+
+  - name: longhorn-kernel-crypt # I have seen bizarre situation where the module did not exist, maybe a restart prior to inserting is required
+    modprobe:
+     name: dm_crypt
+     state: present
+    become: true
+
   - name: longhorn-nfs
     apk:
      name: nfs-utils
