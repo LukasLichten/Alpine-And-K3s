@@ -1,0 +1,119 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    logs:
+      general:
+        level: INFO # INFO - DEBUG - more settings are available
+      access:
+        enabled: true
+    
+    globalArguments:
+    # - "--global.checknewversion"
+    - "--global.sendanonymoususage"
+
+    additionalArguments:
+    - "--certificatesresolvers.myresolver.acme.storage=/data/acme.json" # You need to delete the file when going to production
+    - "--certificatesresolvers.myresolver.acme.email=[Email]"
+    - "--certificatesresolvers.myresolver.acme.tlschallenge=false" # You could mix and match challenges, but: wildcards are only supported on DNS, and the other two require open ports
+    - "--certificatesresolvers.myresolver.acme.dnschallenge=true" 
+    - "--certificatesresolvers.myresolver.acme.dnschallenge.provider=duckdns" # A long array of providers can be used https://doc.traefik.io/traefik/https/acme/
+    - "--certificatesresolvers.myresolver.acme.dnschallenge.resolvers=8.8.4.4:53,9.9.9.9:53"
+    - "--certificatesresolvers.myresolver.acme.dnschallenge.delaybeforecheck=15"
+    # Use Staging server first and see if you get a stagging certificate, if yes you can comment the line out to go to production
+    - "--certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory" # Staging Server
+    - "--serverstransport.insecureskipverify=true"
+    
+    persistence:
+      enabled: true
+      storageClass: "longhorn"
+
+    deployment:
+      initContainers:
+      # The "volume-permissions" init container is required if you run into permission issues.
+      # Related issue: https://github.com/containous/traefik/issues/6972
+      - name: volume-permissions
+        image: busybox:1.31.1
+        command: ["sh", "-c", "touch /data/acme.json ; chown 65532:65532 /data/acme.json ; chmod -Rv 600 /data/*"]
+        volumeMounts:
+        - name: data
+          mountPath: /data
+
+    ports:
+      traefik:
+        expose: true
+        exposedPort: 9188 # Different port as I exposed Portainer on 9000
+        # it is probably advisable to create a IngressRoute with BasicAuth
+
+      websecure: # used for internal network
+        tls:
+          enabled: true
+          certResolver: myresolver
+          domains:
+          - main: '*.local.[your-dns]'
+      web:
+          port: 8000
+          expose: true
+          exposedPort: 80
+          protocol: TCP
+          redirectTo: websecure
+
+
+    env:
+    - name: DUCKDNS_TOKEN
+      valueFrom:
+       secretKeyRef:
+         name: duckdns-conf
+         key: DUCKDNS_TOKEN
+    # all of these values below are an attempt to deal with an issue where using mutliple sub domains would lead to one of them not verifying.
+    # I never succeded, and just used the *.local wildcard only, instead of as instructed the local as main and *.local as san
+    - name: DUCKDNS_SEQUENCE_INTERVAL
+      value: '15'
+    - name: DUCKDNS_POLLING_INTERVAL
+      value: '15'
+    - name: DUCKDNS_TTL
+      valueFrom:
+       secretKeyRef:
+         name: duckdns-conf
+         key: DUCKDNS_TTL
+    
+    securityContext:
+      capabilities:
+        drop: [ALL]
+      readOnlyRootFilesystem: false
+      runAsGroup: 65532
+      runAsNonRoot: true
+      runAsUser: 65532
+
+    podSecurityContext:
+      fsGroup: 65532
+
+    # Per default traffic would be allowed to schedule on our "CriticalAddonsOnly" nodes, aka our control pane
+    # even though the other two settings are copy overs, and should stop it from running on the control pane nodes
+    # Why not on controlpane? Longhorn through "CriticalAddonsOnly" does not run on there
+    # not just storing but also mounting of longhorn volumes is not possible
+    tolerations:
+    - key: "CriticalAddonsOnly"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+    - key: "node-role.kubernetes.io/master"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+---
+apiVersion: v1
+data:
+  DUCKDNS_TOKEN: [token] # but base64 encoded (this should generate it: echo 'key' | base64)
+  DUCKDNS_TTL: ZFF3NHc5V2dYY1EK # (Optional) insert some characters (still base64) to be set as txt of the domain to verify it is yours. 
+  #If you remove it you need to also remove it in the env
+kind: Secret
+metadata:
+  name: duckdns-conf
+  namespace: kube-system
+type: Opaque

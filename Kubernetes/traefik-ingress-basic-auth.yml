@@ -1,0 +1,41 @@
+# This is an example of a basic auth protected ingress, allowing you to making services accsesible while protecting them with login and password
+# This sample is specifically for longhorn, which in the longhorn docs recommends using such an ingress (showing it with a nginx ingress)
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: longhorn
+  namespace: longhorn-system
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`longhorn.local.[insert dns]`) # you need to make a dns entry in your pihole to point to your server (the vip on which traefik is load balanced to). Just typing in the IP won't work
+    kind: Rule
+    middlewares:
+    - name: longhorn-auth
+      namespace: longhorn-system
+    services:
+    - name: longhorn-frontend
+      port: 80
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: longhorn-auth
+  namespace: longhorn-system
+spec:
+  basicAuth:
+    secret: longhorn-auth-secret
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: longhorn-auth-secret
+  namespace: longhorn-system
+data:
+  # use 'htpasswd -nb user password | openssl base64' to generate the auth token to put here
+  users: |1
+    Ym95czokYXByMSRjcmNsankyNyRKQjhOeEZNNm1HbkhRNDRaRVl1OHYuCgo=
+type: Opaque

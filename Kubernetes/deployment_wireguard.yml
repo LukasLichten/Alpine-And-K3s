@@ -1,0 +1,110 @@
+# Wireguard is a simple barebones VPN server and client.
+# This deployment serves to provide a server to connect back home 
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wireguard
+  namespace: networking
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: wireguard
+  template:
+    metadata:
+      labels:
+        app: wireguard
+    spec:
+      containers:
+      - env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        - name: TZ
+          value: UTC
+        - name: SERVERPORT
+          value: "51820" # If you change this port it only changes the port used from the outside to contact the server, inside the container it will always be 51820
+        - name: PEERS
+          value: "1" # If you want to use more clients, increase this number. Changing the number will trigger regeneration of everything
+        - name: PEERDNS
+          value: 9.9.9.9 # address of your dns server to be used when connecting in
+        - name: INTERNAL_SUBNET
+          value: 10.0.0.0
+        - name: SERVERURL
+          value: [insert dns] # this will be used as an address to connect from the outside
+        image: linuxserver/wireguard:latest
+        imagePullPolicy: Always
+        name: wireguard
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities:
+            add:
+            - SYS_MODULE
+            - NET_ADMIN
+          privileged: false
+          readOnlyRootFilesystem: false
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /config
+          name: vpn-conf
+        - mountPath: /lib/modules
+          name: vpn-modules
+      dnsPolicy: ClusterFirst
+      initContainers:
+      # In the instructions for Wireguard from linuxserver.io they have in the docker run command --sysctl="net.ipv4.conf.all.src_valid_mark=1", but on kubernetes this does not exist
+      # You can either every time the container gets deployed run the sysctl command yourself, or use this init container that does it for us
+      - name: wireguard-sidecar
+        args:
+        - -w
+        - net.ipv4.ip_forward=1
+        command:
+        - sysctl
+        image: busybox
+        imagePullPolicy: Always
+        resources: {}
+        securityContext:
+          allowPrivilegeEscalation: true
+          capabilities: {}
+          privileged: true
+          readOnlyRootFilesystem: false
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      restartPolicy: Always
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: vpn-conf
+        persistentVolumeClaim:
+          claimName: wireguard
+      - name: vpn-modules
+        hostPath:
+          path: /lib/modules # the wireguard kernel modules are required on every node, however alpine has those
+          type: ""
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wireguard
+  namespace: networking
+spec:
+  allocateLoadBalancerNodePorts: true
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  # loadBalancerIP: [insert ip] # this line is optional, as long as the IP your load balancer automatically chooses is reachable via your dns
+  ports:
+  - port: 51820 # this port has to be the server port, expect you redirected using your NAT firewall
+    # nodePort: 51820 # this file is not 100% tested, as I personally use a different port, however this would be outside of the nodeport range, but I am not sure kubernetes allows you to creat a service without nodeport. It does not have to be the same as the port, but can be
+    protocol: UDP
+    targetPort: 51820 # always 51820
+  selector:
+    app: wireguard
+  sessionAffinity: None
+  type: LoadBalancer

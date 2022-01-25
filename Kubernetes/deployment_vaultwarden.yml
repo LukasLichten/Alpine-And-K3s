@@ -1,0 +1,89 @@
+# Vaultwarden is an open source unoffical rust-based implentation of the Bitwarden API (https://github.com/dani-garcia/vaultwarden), a Password Manager
+# This allows you to use the web UI at the address, but also the Bitwarden Browser Plugin and Mobile App allowing you to login
+# Setting up Vaultwarden is not particularly easy, requires working traefik with certifactes (check the traefik-reconfig.yml) and pihole make a local dns entry (and in my case kube-vip as loadbalancer)
+# Granted if you have those it is easy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vaultwarden
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: vaultwarden
+  template:
+    metadata:
+      labels:
+        app: vaultwarden
+    spec:
+      containers:
+      - env:
+        - name: WEBSOCKET_ENABLED
+          value: "true"
+        image: vaultwarden/server:latest
+        imagePullPolicy: Always
+        name: vaultwarden
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /data
+          name: data
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: vaultwarden # I created this volume claim in longhorn ui ahead of deploying it
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: vaultwarden
+  namespace: default
+spec:
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: web
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  - name: socket
+    port: 3012
+    protocol: TCP
+    targetPort: 3012
+  selector:
+    app: vaultwarden
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: vaultwarden
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    # you need to make a dns entry in your pihole to point to your server (the vip on which traefik is load balanced to). Just typing the IP into your browser won't work
+  - match: Host(`vault.local.[insert dns]`)
+    kind: Rule
+    services:
+    - name: vaultwarden
+      port: 80
+  - match: Host(`vault.local.[insert dns]`) &&  PathPrefix(`/notifications/hub`) # dns needs to be the same
+    kind: Rule
+    services:
+    - name: vaultwarden
+      port: 3012

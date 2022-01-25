@@ -1,0 +1,17 @@
+# A sample ingress. Required for it to work is for you to have a service (with the name below) backed by an app serving plain http.
+# As an example it is perfect to back up a 'test' nginx deployment with a 'test'
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: test-tls
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  # you need to make a dns entry in your pihole to point to your server (the vip on which traefik is load balanced to). Just typing the IP into your browser won't work
+  - match: Host(`test.local.[insert dns]`) # You can do && PathPrefix(`/test`) to only forward traffic for that directory (see more in the vaultwarden deployment)
+    kind: Rule
+    services:
+    - name: test # name of the service
+      port: 80
