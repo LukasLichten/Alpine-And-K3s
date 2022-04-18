@@ -1,0 +1,455 @@
+# Image Board engine with tagging and everything
+# I use it to store weeb-stuff and "offbrand", but it can totally do also normal images
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: szurubooru-server
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: szurubooru-server
+  template:
+    metadata:
+      labels:
+        app: szurubooru-server
+    spec:
+      containers:
+      - env:
+        # Unfortunatly there is a bug in szurubooru where when running it in kubernetes results in it thinking it is running as a desktop app instead of docker
+        # resulting in it not loading the enviroment variables. We have to set them via the config file
+        #
+        # - name: POSTGRES_HOST
+        #   value: "szurubooru-postgres.default.svc.cluster.local"
+        # - name: POSTGRES_USER
+        #   valueFrom:
+        #     configMapKeyRef:
+        #       name: szurubooru
+        #       key: POSTGRES_USER
+        # - name: POSTGRES_PASSWORD
+        #   valueFrom:
+        #     configMapKeyRef:
+        #       name: szurubooru
+        #       key: POSTGRES_PASSWORD
+        image: szurubooru/server:latest
+        imagePullPolicy: Always
+        name: szurubooru-server
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /data
+          name: data
+        - mountPath: /opt/app/config.yaml
+          name: config
+          subPath: config.yaml
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: szurubooru
+      - name: config
+        configMap:
+          name: szurubooru
+          items:
+          - key: CONFIG_FILE
+            path: "config.yaml"
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: szurubooru-client
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: szurubooru-client
+  template:
+    metadata:
+      labels:
+        app: szurubooru-client
+    spec:
+      containers:
+      - env:
+        - name: BACKEND_HOST
+          value: "szurubooru-server.default.svc.cluster.local"
+        image: szurubooru/client:latest
+        imagePullPolicy: Always
+        name: szurubooru-client
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /data
+          name: data
+          readOnly: true
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: szurubooru
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: szurubooru-postgres
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: szurubooru-postgres
+  template:
+    metadata:
+      labels:
+        app: szurubooru-postgres
+    spec:
+      containers:
+      - env:
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: szurubooru
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: szurubooru
+              key: POSTGRES_PASSWORD
+        - name: PGDATA 
+          value: /var/lib/postgresql/data/pgdb # it can not be the same directory as the mount, it has to be a sub, otherwise it fails
+        image: postgres:11-alpine
+        imagePullPolicy: Always
+        name: szurubooru-postgres
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data
+          name: db
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: db
+        persistentVolumeClaim:
+          claimName: szurubooru-db
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: szurubooru-server
+  namespace: default
+spec:
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: api
+    port: 6666
+    protocol: TCP
+    targetPort: 6666
+  selector:
+    app: szurubooru-server
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: szurubooru-client
+  namespace: default
+spec:
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: web
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: szurubooru-client
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: szurubooru-postgres
+  namespace: default
+spec:
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: postgres
+    port: 5432
+    protocol: TCP
+    targetPort: 5432
+  selector:
+    app: szurubooru-postgres
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: szurubooru
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  # you need to make a dns entry in your pihole to point to your server (the vip on which traefik is load balanced to). Just typing the IP into your browser won't work
+  - match: Host(`szuru.local.[insert dns]`)
+    kind: Rule
+    services:
+    - name: szurubooru-client
+      port: 80
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: szurubooru
+  namespace: default
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 500Gi
+  storageClassName: nfs-client # you most likely want some sort of mass storage external of the cluster to store the images
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: szurubooru-db
+  namespace: default
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 512Mi
+  storageClassName: longhorn
+
+---
+
+apiVersion: v1
+data:
+  # technically you should set these values via a secret, but as we have to point the database via the config file (as szurubooru does not take enviroment variables from kubernetes)
+  # meaning we have to have the db user and password in the config, and that is just way easier to use when it is a normal config rather then a secret
+  POSTGRES_USER: [User]
+  POSTGRES_PASSWORD: [Password]
+  CONFIG_FILE: |
+    # shown in the website title and on the front page
+    name: szurubooru
+    # full url to the homepage of this szurubooru site, with no trailing slash
+    domain: offbrand.local.dergeneralfluff.duckdns.org
+    # used to salt the users' password hashes and generate filenames for static content
+    secret: [enter random string]
+    
+    # Delete thumbnails and source files on post delete
+    # Original functionality is no, to mitigate the impacts of admins going
+    # on unchecked post purges.
+    delete_source_files: no
+    
+    thumbnails:
+      avatar_width: 300
+      avatar_height: 300
+      post_width: 300
+      post_height: 300
+    
+    # settings used to download files from the web on behalf of the api users
+    user_agent:
+    max_dl_filesize: 25.0E+6 # maximum filesize limit in bytes
+    
+    # automatically convert animated GIF uploads to video formats
+    convert:
+      gif:
+        to_webm: false
+        to_mp4: false
+
+    # allow posts to be uploaded even if some image processing errors occur
+    allow_broken_uploads: false
+
+    # used to send password reset e-mails
+    smtp:
+      host: # example: localhost
+      port: # example: 25
+      user: # example: bot
+      pass: # example: groovy123
+      from: # example: noreply@example.com
+      # if host is left empty the password reset feature will be disabled,
+      # in which case it is recommended to fill contactEmail so that users
+      # know who to contact when they want to reset their password
+
+    contact_email: # example: bob@example.com. Meant for manual password reset procedures
+
+    enable_safety: yes
+
+    tag_name_regex: ^\S+$
+    tag_category_name_regex: ^[^\s%+#/]+$
+
+    pool_name_regex: ^\S+$
+    pool_category_name_regex: ^[^\s%+#/]+$
+
+    # don't make these more restrictive unless you want to annoy people; if you do
+    # customize them, make sure to update the instructions in the registration form
+    # template as well.
+    password_regex: '^.{5,}$'
+    user_name_regex: '^[a-zA-Z0-9_-]{1,32}$'
+
+    # webhooks to call when events occur (such as post/tag/user/etc. changes)
+    # the listed urls will be called with a HTTP POST request with a payload
+    # containing a snapshot resource as JSON. See doc/API.md for details
+    webhooks:
+      # - https://api.example.com/webhooks/
+
+    default_rank: regular
+
+    privileges:
+      'users:create:self':            anonymous # Registration permission
+      'users:create:any':             administrator
+      'users:list':                   regular
+      'users:view':                   regular
+      'users:edit:any:name':          moderator
+      'users:edit:any:pass':          moderator
+      'users:edit:any:email':         moderator
+      'users:edit:any:avatar':        moderator
+      'users:edit:any:rank':          moderator
+      'users:edit:self:name':         regular
+      'users:edit:self:pass':         regular
+      'users:edit:self:email':        regular
+      'users:edit:self:avatar':       regular
+      'users:edit:self:rank':         moderator # one can't promote themselves or anyone to upper rank than their own.
+      'users:delete:any':             administrator
+      'users:delete:self':            regular
+
+      'user_tokens:list:any':         administrator
+      'user_tokens:list:self':        regular
+      'user_tokens:create:any':       administrator
+      'user_tokens:create:self':      regular
+      'user_tokens:edit:any':         administrator
+      'user_tokens:edit:self':        regular
+      'user_tokens:delete:any':       administrator
+      'user_tokens:delete:self':      regular
+
+      'posts:create:anonymous':       regular
+      'posts:create:identified':      regular
+      'posts:list':                   anonymous
+      'posts:reverse_search':         regular
+      'posts:view':                   anonymous
+      'posts:view:featured':          anonymous
+      'posts:edit:content':           power
+      'posts:edit:flags':             regular
+      'posts:edit:notes':             regular
+      'posts:edit:relations':         regular
+      'posts:edit:safety':            power
+      'posts:edit:source':            regular
+      'posts:edit:tags':              regular
+      'posts:edit:thumbnail':         power
+      'posts:feature':                moderator
+      'posts:delete':                 moderator
+      'posts:score':                  regular
+      'posts:merge':                  moderator
+      'posts:favorite':               regular
+      'posts:bulk-edit:tags':         power
+      'posts:bulk-edit:safety':       power
+
+      'tags:create':                  regular
+      'tags:edit:names':              power
+      'tags:edit:category':           power
+      'tags:edit:description':        power
+      'tags:edit:implications':       power
+      'tags:edit:suggestions':        power
+      'tags:list':                    regular
+      'tags:view':                    anonymous
+      'tags:merge':                   moderator
+      'tags:delete':                  moderator
+
+      'tag_categories:create':        moderator
+      'tag_categories:edit:name':     moderator
+      'tag_categories:edit:color':    moderator
+      'tag_categories:edit:order':    moderator
+      'tag_categories:list':          anonymous
+      'tag_categories:view':          anonymous
+      'tag_categories:delete':        moderator
+      'tag_categories:set_default':   moderator
+
+      'pools:create':                 regular
+      'pools:edit:names':             power
+      'pools:edit:category':          power
+      'pools:edit:description':       power
+      'pools:edit:posts':             power
+      'pools:list':                   regular
+      'pools:view':                   anonymous
+      'pools:merge':                  moderator
+      'pools:delete':                 moderator
+
+      'pool_categories:create':       moderator
+      'pool_categories:edit:name':    moderator
+      'pool_categories:edit:color':   moderator
+      'pool_categories:list':         anonymous
+      'pool_categories:view':         anonymous
+      'pool_categories:delete':       moderator
+      'pool_categories:set_default':  moderator
+    
+      'comments:create':              regular
+      'comments:delete:any':          moderator
+      'comments:delete:own':          regular
+      'comments:edit:any':            moderator
+      'comments:edit:own':            regular
+      'comments:list':                regular
+      'comments:view':                regular
+      'comments:score':               regular
+    
+      'snapshots:list':               power
+
+      'uploads:create':               regular
+      'uploads:use_downloader':       power
+
+    ## ONLY SET THESE IF DEPLOYING OUTSIDE OF DOCKER
+    debug: 1 # generate server logs?
+    show_sql: 0 # show sql in server logs?
+    data_url: data/
+    data_dir: /data/ # /var/www/data
+    ## usage: schema://user:password@host:port/database_name
+    ## example: postgres://szuru:dog@localhost:5432/szuru_test
+    database: postgres://[User]:[Password]@szurubooru-postgres.default.svc.cluster.local:5432/[User]
+kind: ConfigMap
+metadata:
+  name: szurubooru
+  namespace: default
