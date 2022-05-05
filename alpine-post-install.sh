@@ -1,6 +1,6 @@
 # To download and use:
 # apk add curl
-# curl https://raw.githubusercontent.com/TheLichten/Alpine-And-K3s/master/alpine-post-install.sh > alpine-post-install
+# curl https://raw.githubusercontent.com/LukasLichten/Alpine-And-K3s/master/alpine-post-install.sh > alpine-post-install
 # chmod u+x alpine-post-install
 # ./alpine-post-install [Username] [Github-User-For-Ssh-Keys]
 
