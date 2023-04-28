@@ -1,119 +1,133 @@
 # this installs all required components for k3s to function on a node
-- name: building-kluster
+- name: Building-kluster
   hosts: kube
   tasks:
-  - name: cni-old
-    apk:
-     name: cni-plugins=0.9.1-r2 #due to flannel not being part of 1.0.1-r0 for Alpine v3.15
-     no_cache: yes
+  - name: Cni-Install
+    community.general.apk:
+     name: cni-plugins  cni-plugin-flannel
+     no_cache: true
      state: present
-     repository: https://dl-cdn.alpinelinux.org/alpine/v3.14/community/
     become: true
 
-  - name: dbus-just-in-case
-    apk:
+  - name: Dbus-just-in-case
+    community.general.apk:
      name: dbus
-     no_cache: yes
+     no_cache: true
      state: present
     become: true
 
-  - name: install-containerd
-    apk:
+  - name: Install-containerd
+    community.general.apk:
      name: containerd
-     no_cache: yes
+     no_cache: true
      state: present
     become: true
 
-  - name: download-k3s
-    apk:
-     name: k3s
-     no_cache: yes
-     state: present
-    become: true
-
-  - name: longhorn-requirements
-    apk:
+  - name: Longhorn-requirements
+    community.general.apk:
      name: bash curl findmnt grep gawk blkid lsblk
-     no_cache: yes
+     no_cache: true
      state: present
     become: true
 
-  - name: longhorn-iscsi
-    apk:
+  - name: Longhorn-iscsi
+    community.general.apk:
      name: open-iscsi open-iscsi-openrc
-     no_cache: yes
+     no_cache: true
      state: present
     become: true
 
-  - name: longhorn-iscsi-start
-    service:
+  - name: Longhorn-iscsi-start
+    ansible.builtin.service:
      name: iscsid
-     enabled: yes
+     enabled: true
      state: started
     become: true
 
-    # The longhorn encrypted stuff is still experimental, as I have not gotten longhorn encrypted drives to actually work
-  - name: longhorn-crypt
-    apk:
-     name: cryptsetup cryptsetup-openrc
-     no_cache: yes
-     state: present
-    become: true
-
-  - name: longhorn-crypt-start
-    service:
-     name: dmcrypt
-     enabled: yes
-     state: started
-    become: true
-
-  - name: longhorn-kernel-crypt # I have seen bizarre situation where the module did not exist, maybe a restart prior to inserting is required
-    modprobe:
-     name: dm_crypt
-     state: present
-    become: true
-
-  - name: longhorn-nfs
-    apk:
+  - name: Longhorn-nfs
+    community.general.apk:
      name: nfs-utils
-     no_cache: yes
+     no_cache: true
      state: present
     become: true
 
-  - name: longhorn-openrc-rc-local
-    template:
+  - name: Longhorn-openrc-rc-local
+    ansible.builtin.template:
      src: ../templates/k3s/rc.local.start
      dest: /etc/local.d/rc.local.start
      mode: 'u+rwx'
     become: true
 
-  - name: longhorn-local-service
-    service:
+  - name: Longhorn-local-service
+    ansible.builtin.service:
      name: local
-     enabled: yes
+     enabled: true
      state: restarted
     become: true
 
-  - name: init.d
-    template:
-     src: ../templates/k3s/initd-k3s
-     dest: /etc/init.d/k3s
+  - name: Install-Cifs
+    community.general.apk:
+     name: cifs-utils jq util-linux coreutils
+     no_cache: true
+     state: present
     become: true
 
-- name: setting-up-as-server
+  - name: Create-Folder-For-Cifs
+    ansible.builtin.file:
+     path: "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/fstab~cifs"
+     state: directory
+     mode: '755'
+    become: true
+
+  - name: Download-Cifs-Plugin
+    ansible.builtin.uri:
+     url: https://raw.githubusercontent.com/fstab/cifs/master/cifs
+     dest: "/usr/libexec/kubernetes/kubelet-plugins/volume/exec/fstab~cifs/"
+     mode: '755'
+     force: true
+    become: true
+
+  # - name: Adding-init.d
+  #  template:
+  #   src: ../templates/k3s/initd-k3s
+  #   dest: /etc/init.d/k3s
+  #  become: true
+
+- name: Setting-up-as-server
   hosts: masters
   tasks:
-  - name: conf.d-node-join
-    template:
-     src: ../templates/k3s/confd-k3s-server
-     dest: /etc/conf.d/k3s
-    become: true
+   - name: Conf.d-node
+     ansible.builtin.template:
+      src: ../templates/k3s/confd-k3s-server
+      dest: /etc/conf.d/k3s
+     become: true
+   - name: Install-K3s
+     shell:
+      cmd: curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_TOKEN={{ k3s_token }} sh - --server https://{{ k3s_vip }}:6443
+     become: true
+     args:
+      warn: false
+   - name: Replace-Init.d
+     ansible.builtin.template:
+      src: ../templates/k3s/confd-k3s-server
+      dest: /etc/conf.d/k3s
+     become: true
+   - name: Let it register
+     wait_for:
+      timeout: 10
+   - name: Restart-K3s
+     service:
+      name: k3s
+      enabled: true
+      state: restart
+     become: true
 
-- name: setting-up-as-agent
+- name: Setting-up-as-agent
   hosts: agents
   tasks:
-  - name: conf.d-node-join-agent
-    template:
-     src: ../templates/k3s/confd-k3s-agent
-     dest: /etc/conf.d/k3s
-    become: true
+   - name: Install-K3s-agent
+     shell:
+      cmd: curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_TOKEN={{ k3s_token }} K3S_URL=https://{{ k3s_vip }}:6443 sh -
+     become: true
+     args:
+      warn: false

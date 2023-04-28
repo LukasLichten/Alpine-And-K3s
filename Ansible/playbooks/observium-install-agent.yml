@@ -1,0 +1,71 @@
+# Used to install the SNMP v3 client onto the Machines
+#
+# For setting this up you need to add to your hosts file the following variables:
+# snmp_range: 10.0.0.0/24
+# snmp_user: admin
+# snmp_pw: Password
+# snmp_crypto_pw: More Password
+
+- name: install-snmp-alpine
+  hosts: alpine
+  tasks:
+  - name: update
+    apk:
+      update_cache: yes
+    become: true
+
+  - name: install
+    apk:
+      name: net-snmp net-snmp-openrc net-snmp-libs net-snmp-dev net-snmp-tools
+      state: present
+    become: true
+
+- name: install-snmp-artix
+  hosts: artix
+  tasks:
+  - name: install
+    pacman:
+      name: net-snmp
+      update_cache: true
+      state: present
+    become: true
+
+  - name: install-openrc
+    pacman:
+      name: net-snmp-openrc
+      update_cache: true
+      state: present
+    become: true
+  
+  - name: include-basics-for-f-sacke
+    file:
+      path: /etc/snmp/
+      state: directory
+    become: true
+
+- name: set-config
+  hosts: all
+  tasks:
+  - name: why-can-you-not-be-normal
+    file:
+      path: /snmp/
+      state: directory
+    become: true
+
+  - name: write-config
+    template:
+     src: ../templates/snmpd.conf
+     dest: /etc/snmp/snmpd.conf
+    become: true
+
+  - name: setup-password
+    shell:
+      cmd: net-snmp-config --create-snmpv3-user -ro -A {{ snmp_pw }} -X {{ snmp_crypto_pw }} -a SHA-256 -x AES {{ snmp_user }}
+    become: true
+
+  - name: start-service
+    service:
+      name: snmpd
+      enabled: true
+      state: restarted
+    become: true

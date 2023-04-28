@@ -2,60 +2,60 @@
 # run this command on your local machine:
 # ansible-galaxy collection install community.general
 
-- name: general-setup
+- name: General-setup
   hosts: alpine
   tasks:
-  - name: enable-community-repo
-    template:
+  - name: Enable-community-repo
+    ansible.builtin.template:
      src: ../templates/alpine-repos
      dest: /etc/apk/repositories
     become: true
 
-  - name: ssh-demon-disabled-password-authentication
-    template:
+  - name: Ssh-demon-disabled-password-authentication
+    ansible.builtin.template:
      src: ../templates/sshd_config
      dest: /etc/ssh/sshd_config
     become: true
 
-  - name: update-and-upgrade
-    apk:
-     update_cache: yes
-     upgrade: yes
+  - name: Update-and-upgrade
+    community.general.apk:
+     update_cache: true
+     upgrade: true
     become: true
 
-  - name: guest-agent-install
-    apk:
+  - name: Guest-agent-install
+    community.general.apk:
      name: qemu-guest-agent
      state: present
     become: true
 
-  - name: guest-agent-start
-    service:
+  - name: Guest-agent-start
+    ansible.builtin.service:
      name: qemu-guest-agent
      enabled: true
      state: started
     become: true
 
-  - name: pip-install
-    apk:
+  - name: Pip-install
+    community.general.apk:
      name: py3-pip
      state: present
     become: true
 
-  - name: vim-install
-    apk:
+  - name: Vim-install
+    community.general.apk:
      name: vim  # or take nano, your pick
      state: present
     become: true
 
-  - name: htop
-    apk:
+  - name: Htop
+    community.general.apk:
      name: htop
      state: present
     become: true
 
-  - name: neofetch-because-cool
-    apk:
+  - name: Neofetch-because-cool
+    community.general.apk:
      name: neofetch
      state: present
     become: true

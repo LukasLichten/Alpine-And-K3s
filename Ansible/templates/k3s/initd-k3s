@@ -1,29 +1,29 @@
 #!/sbin/openrc-run
-
-# Based on ...
-#   https://raw.githubusercontent.com/rancher/k3s/master/install.sh
 K3S_LOGFILE="${K3S_LOGFILE:-/var/log/${RC_SVCNAME}.log}"
 
-supervisor=supervise-daemon
+depend() {
+    after network-online
+    want cgroups
+}
 
-name="k3s"
-command="/usr/bin/k3s"
-command_args="${K3S_EXEC} ${K3S_OPTS} >>${K3S_LOGFILE} 2>&1"
+start_pre() {
+    rm -f /tmp/k3s.*
+}
+
+supervisor=supervise-daemon
+name=k3s
+command="/usr/local/bin/k3s"
+command_args="server  ${K3S_OPTS} \
+    >>${K3S_LOGFILE} 2>&1"
 
 output_log=${K3S_LOGFILE}
 error_log=${K3S_LOGFILE}
 
-pidfile="/run/k3s.pid"
+pidfile="/var/run/k3s.pid"
 respawn_delay=5
 respawn_max=0
 
-rc_ulimit="${K3S_ULIMIT:--c unlimited -n 1048576 -u unlimited}"
-
-depend() {
-        need net cgroups dbus
-        after firewall
-}
-
-start_pre() {
-        checkpath -f -m 0644 -o root:root "${K3S_LOGFILE}"
-}
+set -o allexport
+if [ -f /etc/environment ]; then source /etc/environment; fi
+if [ -f /etc/rancher/k3s/k3s.env ]; then source /etc/rancher/k3s/k3s.env; fi
+set +o allexport

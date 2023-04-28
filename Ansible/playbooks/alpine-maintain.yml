@@ -1,15 +1,15 @@
-- name: alpine-maintain
+- name: Alpine-maintain
   hosts: alpine
   tasks:
-  - name: update-and-upgrade
+  - name: Update-and-upgrade
     apk:
-     update_cache: yes
-     upgrade: yes
+     update_cache: true
+     upgrade: true
     become: true
 
-  - name: k3s-running
+  - name: K3s-running
     service:
      name: k3s
-     enabled: yes
+     enabled: true
      state: started
     become: true

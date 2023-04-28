@@ -10,7 +10,7 @@ all:
       k3s_token: "[Token]" # cat /var/lib/rancher/k3s/server/token
       k3s_vip: 0.0.0.0 # the virtual ip under which the cluster will be available (kubectl)
       net_interface: eth0 # In Alpine it is basically always eth0
-      kube_vip_version: "v0.4.1" # find newest version via this command: curl -sL https://api.github.com/repos/kube-vip/kube-vip/releases | jq -r ".[0].name"
+      kube_vip_version: "v0.5.6" # find newest version via this command: curl -sL https://api.github.com/repos/kube-vip/kube-vip/releases | jq -r ".[0].name"
      children:
       masters:
        hosts:
