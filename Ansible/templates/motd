@@ -1,0 +1,11 @@
+ 
+Welcome to YOUR Alpine Install!
+
+You can continue with installing k3s under <https://github.com/lukaslichten/alpine-and-k3s/>
+
+The Alpine Wiki contains a large amount of how-to guides and general
+information about administrating Alpine systems.
+See <https://wiki.alpinelinux.org/>.
+ 
+To change this message edit /etc/motd
+ 

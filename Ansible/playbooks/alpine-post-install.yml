@@ -1,0 +1,74 @@
+# Third part of the installer, fixing up things, installing guest agent, pip, vim and htop
+# Made for Alpine 3.18-r0 Standard, millage may vary
+
+
+- name: Final-Setup
+  hosts: alpine
+  tasks:
+  - name: Ssh-demon-disabled-password-authentication
+    ansible.builtin.template:
+      src: ../templates/sshd_config
+      dest: /etc/ssh/sshd_config
+    become: true
+
+  - name: Ssh-Reboot
+    ansible.builtin.service:
+      name: sshd
+      enabled: true
+      state: restarted
+    become: true
+
+  - name: Disable-Root-Login
+    ansible.builtin.command: # ansible.builtin.user with password_lock seems to not work
+      cmd: "passwd -l root"
+    become: true
+    ignore_errors: true # If already disabled the command will bounce
+
+  - name: Write-Motd
+    ansible.builtin.copy:
+      src: ../templates/motd
+      dest: /etc/motd
+    become: true
+
+  - name: Update-and-upgrade
+    community.general.apk:
+      update_cache: true
+      upgrade: true
+    become: true
+
+  - name: Guest-agent-install
+    community.general.apk:
+      name: qemu-guest-agent
+      state: present
+    become: true
+
+  - name: Guest-agent-start
+    ansible.builtin.service:
+      name: qemu-guest-agent
+      enabled: true
+      state: started
+    become: true
+
+  - name: Pip-install
+    community.general.apk:
+      name: py3-pip
+      state: present
+    become: true
+
+  - name: Vim-install
+    community.general.apk:
+      name: vim  # or take nano, your pick
+      state: present
+    become: true
+
+  - name: Htop
+    community.general.apk:
+      name: htop
+      state: present
+    become: true
+
+  - name: Neofetch-because-cool
+    community.general.apk:
+      name: neofetch
+      state: present
+    become: true

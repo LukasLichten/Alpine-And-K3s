@@ -1,0 +1,19 @@
+ 
+WARNING!
+
+SSH Root Login is enabled, the root user is enabled and has an empty password!
+This is a massive security risk
+
+Either finish the install by running the third part, the ansible playbook alpine-post-install.yml
+Or by fixing the problems manually:
+- Edit /etc/ssh/sshd_conf and remove or edit the lines (at the end of the file):
+    - PermitRootLogin yes
+    - PermitEmptyPasswords yes
+- Run 'doas passwd -l root' to stop root login
+
+If you have just run alpine-pre-install.sh, then ignore this warning, and run the ansible playbook alpine-install.yml first
+
+Further information at <https://github.com/lukaslichten/alpine-and-k3s/>
+
+You may remove this message by editing /etc/motd
+ 

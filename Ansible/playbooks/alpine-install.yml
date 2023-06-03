@@ -1,0 +1,93 @@
+# This playbook is to be run on a pre-install Alpine instance after running "alpine-pre-install.sh"
+# Made for Alpine 3.18-r0 Standard, millage may vary
+# It installs Alpine to the drive (setting ip and creating a user) and reboots
+
+# WARNING: After the install the root user still has no password and can be logged into from ssh
+# Continue with alpine-post-install.yml afterwards to fix this issue and install other components
+
+# Besides requiring ansible to run this, you need community.general installed to use doas
+# run this command on your local machine:
+# ansible-galaxy collection install community.general
+
+# your hosts file needs a category of alpine-preinstall, then you need to define these vars:
+# keyboard_layout: "us us"
+# new_ip: 192.168.1.222
+# new_mask: 255.255.255.0
+# new_gateway: 192.168.1.1
+# new_hostname: alpine
+# new_domain: your.name.scam
+# new_dns: 8.8.8.8
+# timezone: UTC
+# new_user: user
+# new_password_hash: password_hash # Generate via: ansible all -i localhost, -m debug -a "msg={{ 'password' | password_hash('sha512', 'mysalt')  }}"
+# github_account: [your name]
+
+- name: Installation
+  hosts: alpinepreinstall
+  tasks:
+  - name: Write-Warning-Motd
+    ansible.builtin.copy:
+      src: ../templates/motd-warning
+      dest: /etc/motd
+  
+  - name: Paste-Answer-File
+    ansible.builtin.template:
+     src: ../templates/alpine-setup-answer-file
+     dest: /install-answers
+
+  - name: Setup-apkrepos # This step can be skipped if the command was run in pre-install, but it doesn't harm running it another time
+    ansible.builtin.command:
+     # creates: "/etc/apk/repositories" # The file already exists per default, but has only the /media/cdrom/apk 
+      cmd: "setup-apkrepos -c -1"
+  
+  - name: Install-doas
+    community.general.apk:
+      name: doas
+      state: present
+
+  - name: Create-User # We can't use the main setup to do this, as then the keys and groups won't be set
+    ansible.builtin.command:
+      cmd: "setup-user -a -u -k 'https://github.com/{{ github_account }}.keys' '{{ new_user }}'"
+    # ignore_errors: true #
+
+  - name: Set-User-With-Password
+    ansible.builtin.user:
+      name: "{{ new_user }}"
+      password: "{{ new_password_hash }}"
+
+  - name: Edit-Disk-Setup-To-Allow-Silent-Install
+    ansible.builtin.replace:
+      path: "/sbin/setup-disk"
+      regexp: 'ask_yesno "WARNING: Erase the above disk\(s\) and continue\? \(y\/n\)" n'
+      replace: ''
+  
+  - name: Run-Install
+    ansible.builtin.command:
+      cmd: "setup-alpine -e -f /install-answers"
+
+  # As the installer set the new network ip we are on borrowed time before the conntection drops
+  # These commands would enable the ejection of the boot disk, but unfortunatly we are not able to execute all before loosing connection
+  
+  # - name: Force-Unmount
+  #   ansible.builtin.command:
+  #     cmd: "umount -a -f"
+  #   ignore_errors: true # this will throw a device busy, while still dismounting
+  # - name: Wait-A-Second
+  #   ansible.builtin.wait_for:
+  #     delay: 5
+  # - name: Eject-Installer
+  #   ansible.builtin.command:
+  #     cmd: "eject"
+
+  - name: Reboot
+    ansible.builtin.command: # we can't use ansible.builtin.reboot, as it would expect the machine to come up on the same IP
+      cmd: "reboot"
+
+# Now we have a fully installed Alpine Instance,
+# that upon completing the reboot will show up on the new IP, with doas, the user and python ready to take further commands
+# WARNING: root user is still present with an empty password and ssh login
+# This will be addressed in alpine-post-install.yml
+
+# You should remove the old host out of your known hosts via:
+# ssh-keygen -f "~/.ssh/known_hosts" -R "192.168.1.X"
+# Else installing future systems that take the same dhcp ip could get tricky
