@@ -10,9 +10,22 @@
 - name: K3s-Maintain
   hosts: kube
   tasks:
-  - name: K3s-running
+  - name: Install-K3s
+    ansible.builtin.shell:
+      cmd: curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_SKIP_START=true sh -
+    become: true
+    args:
+      warn: false
+
+  - name: Readding-init.d
+    template:
+      src: ../templates/k3s/initd-k3s
+      dest: /etc/init.d/k3s
+    become: true
+
+  - name: Restart-K3s
     service:
-     name: k3s
-     enabled: true
-     state: started
+      name: k3s
+      enabled: true
+      state: restarted
     become: true

@@ -1,6 +1,4 @@
-# This is where to start
-# 
-# First we pull up one node, our init node, so it is recommended to use "-l init" when running this playbook
+# This is where to start (after installing your first alpine server)
 # 
 # And this might be a good spot to write down the design goals of this:
 # -Master nodes are tainted, only agents execute workloads
@@ -11,12 +9,25 @@
 #
 # Even after joining the nodes further commands are required (helm and kubectl) to fully install everything
 
-- name: run-basic-conf
-  import_playbook: k3s-node-install.yml
+# This script pulls up an inital node from group init.
+# It is recommended to run this playbook -l init
+# IMPORTANT: But the init node into it's own group seperate from master and agent, after running this script you can put it back into server
+
+# This script will also setup kubectl config on this local machine,
+# so you just need kubectl and helm from your local package manager and you can spin up deployments
+# Except for the fact all server nodes are tainted, therefore you should really go ahead and spinup another server (an agent preferrable)
+# IMPORTANT: Don't forget to copy the k3s_token from the output of this playbook to your hosts.yml before deploying any further nodes
 
 - name: initial-setup
   hosts: init
   tasks:
+  - name: Install-containerd-prematurly
+    community.general.apk:
+     name: containerd
+     no_cache: true
+     state: present
+    become: true
+
   - name: create-manifest-folder
     file:
      path: /var/lib/rancher/k3s/server/manifests/
@@ -33,6 +44,13 @@
   - name: add-lines-to-manifest
     shell:
      cmd: "echo '---' | tee -a /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml"
+    become: true
+
+  - name: install-containered-ctr # Necessary for Alpine 3.18, because containerd no longer ships with ctr for some reason
+    community.general.apk:
+     name: containerd-ctr
+     no_cache: true
+     state: present
     become: true
 
   - name: start-containerd-service
@@ -62,20 +80,91 @@
      state: stopped
     become: true
 
+  - name: remove-containered-ctr # No longer needed
+    community.general.apk:
+     name: containerd-ctr
+     state: removed
+    become: true
+
+# We do this after setting up kubevip etc because when k3s installed, even if it is stopped, for some reason containerd won't respond anymore to ctr
+- name: run-basic-conf
+  import_playbook: k3s-node-install.yml
+
+- name: spinning-up-the-server
+  hosts: init
+  tasks:
   - name: conf.d-init
     template:
      src: ../templates/k3s/confd-k3s-init
      dest: /etc/conf.d/k3s
     become: true
 
-- name: run
-  import_playbook: k3s-node-launch.yml
+  - name: Start-K3s
+    ansible.builtin.service:
+      name: k3s
+      enabled: true
+      state: started
+    become: true
 
-# get the kubectl file from this node and copy it onto your local machine
-# Use this on the remote (you need su privaleges most likely)
-# cat /etc/rancher/k3s/k3s.yaml
-# 
-# You need to most likely copy the data into ~/.kube/config
-# and change then the IP to the vip
-#
-# also use cat /var/lib/rancher/k3s/server/token to get the full token to insert before launching the other nodes
+  - name: Let-it-spinup
+    ansible.builtin.wait_for:
+      timeout: 10
+
+  - name: Aquire-Token
+    ansible.builtin.shell:
+      cmd: cat /var/lib/rancher/k3s/server/token
+    become: true
+    register: k3s_token_output
+  
+  - name: Why
+    ansible.builtin.set_fact:
+      k3s_token: "{{ k3s_token_output.stdout_lines[0] }}"
+
+  - name: Make-It-A-Normal-Server
+    ansible.builtin.template:
+      src: ../templates/k3s/confd-k3s-server
+      dest: /etc/conf.d/k3s
+    become: true
+
+  - name: Start-K3s
+    ansible.builtin.service:
+      name: k3s
+      enabled: true
+      state: restarted
+    become: true
+
+  # This will download the kubectl file to your local machine allowing you to access it
+  # If you already have a kube config it will be backed up numerically (config.~X~, numbered oldest (1) to newst)
+  - name: Downloading-kubectl-file 
+    ansible.builtin.fetch:
+      src: /etc/rancher/k3s/k3s.yaml
+      dest: ~/.kube/
+      flat: true
+    become: true
+
+  - name: Rename-Kubectl-Config
+    local_action:
+      module: ansible.builtin.command
+      cmd: "mv --backup=t ~/.kube/k3s.yaml ~/.kube/config"
+    
+  - name: Changing-Kubectl-Config-Server-Address
+    local_action:
+      module: ansible.builtin.replace
+      path: "~/.kube/config"
+      regexp: 'server: https://127.0.0.1:6443'
+      replace: 'server: https://{{ k3s_vip }}:6443'
+
+  - name: Modifying-Access-So-Helm-Shuts-Up
+    local_action:
+      module: ansible.builtin.file
+      path: "~/.kube/config"
+      mode: 0600
+
+  # IMPORTANT: This will output the k3s token at the end of execution
+  # copy it into the hosts.yml before spinning up more instances
+  - name: Output-K3s-Token
+    ansible.builtin.debug:
+      var: k3s_token
+
+# You can now proceed to spin up more instances
+# And or use kubectl/helm on this machine to communicate with the cluster

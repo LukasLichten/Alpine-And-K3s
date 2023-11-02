@@ -87,47 +87,49 @@
      force: true
     become: true
 
-  # - name: Adding-init.d
-  #  template:
-  #   src: ../templates/k3s/initd-k3s
-  #   dest: /etc/init.d/k3s
-  #  become: true
+  - name: Install-K3s
+    ansible.builtin.shell:
+      cmd: curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_SKIP_START=true sh -
+    become: true
+    args:
+      warn: false
+    
+  - name: Adding-init.d
+    template:
+      src: ../templates/k3s/initd-k3s
+      dest: /etc/init.d/k3s
+    become: true
+
+  - name: Make-Sure-K3s-Is-Stopped
+    service:
+      name: k3s
+      state: stopped
+    become: true
 
 - name: Setting-up-as-server
   hosts: masters
   tasks:
-   - name: Conf.d-node
+   - name: Setting-Server-Conf.d
      ansible.builtin.template:
       src: ../templates/k3s/confd-k3s-server
       dest: /etc/conf.d/k3s
-     become: true
-   - name: Install-K3s
-     shell:
-      cmd: curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_TOKEN={{ k3s_token }} sh - --server https://{{ k3s_vip }}:6443
-     become: true
-     args:
-      warn: false
-   - name: Replace-Init.d
-     ansible.builtin.template:
-      src: ../templates/k3s/confd-k3s-server
-      dest: /etc/conf.d/k3s
-     become: true
-   - name: Let it register
-     wait_for:
-      timeout: 10
-   - name: Restart-K3s
-     service:
-      name: k3s
-      enabled: true
-      state: restart
      become: true
 
 - name: Setting-up-as-agent
   hosts: agents
   tasks:
-   - name: Install-K3s-agent
-     shell:
-      cmd: curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} K3S_TOKEN={{ k3s_token }} K3S_URL=https://{{ k3s_vip }}:6443 sh -
+   - name: Setting-Agent-Conf.d
+     ansible.builtin.template:
+      src: ../templates/k3s/confd-k3s-agent
+      dest: /etc/conf.d/k3s
      become: true
-     args:
-      warn: false
+
+- name: Starting-The-Node
+  hosts: kube
+  tasks:
+   - name: Start-K3s
+     service:
+      name: k3s
+      enabled: true
+      state: started
+     become: true

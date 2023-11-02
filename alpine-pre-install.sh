@@ -12,6 +12,7 @@
 # chmod u+x alpine-pre-install.sh
 
 # or copy the commands manually
+# anyway calling setup-keymap can be a life safer when typing these commands in
 
 # Getting and starting openssh
 apk add openssh

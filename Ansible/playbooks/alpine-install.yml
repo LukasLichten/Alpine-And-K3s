@@ -1,6 +1,6 @@
 # This playbook is to be run on a pre-install Alpine instance after running "alpine-pre-install.sh"
-# Made for Alpine 3.18-r0 Standard, millage may vary
-# It installs Alpine to the drive (setting ip and creating a user) and reboots
+# Made for Alpine 3.18, millage may vary
+# It installs Alpine to the sata-drive (setting ip and creating a user) and reboots
 
 # WARNING: After the install the root user still has no password and can be logged into from ssh
 # Continue with alpine-post-install.yml afterwards to fix this issue and install other components
@@ -19,7 +19,7 @@
 # new_dns: 8.8.8.8
 # timezone: UTC
 # new_user: user
-# new_password_hash: password_hash # Generate via: ansible all -i localhost, -m debug -a "msg={{ 'password' | password_hash('sha512', 'mysalt')  }}"
+# new_password_hash: password_hash # Generate via: ansible all -i localhost, -m debug -a 'msg={{ "password" | password_hash("sha512", "mysalt")  }}''
 # github_account: [your name]
 
 - name: Installation
@@ -83,11 +83,16 @@
     ansible.builtin.command: # we can't use ansible.builtin.reboot, as it would expect the machine to come up on the same IP
       cmd: "reboot"
 
+  - name: Remove-SSH-Known-Hosts
+    local_action:
+      module: ansible.builtin.command
+      cmd: "ssh-keygen -f ~/.ssh/known_hosts -R {{ ansible_host }}"
+
 # Now we have a fully installed Alpine Instance,
 # that upon completing the reboot will show up on the new IP, with doas, the user and python ready to take further commands
 # WARNING: root user is still present with an empty password and ssh login
 # This will be addressed in alpine-post-install.yml
 
 # You should remove the old host out of your known hosts via:
-# ssh-keygen -f "~/.ssh/known_hosts" -R "192.168.1.X"
+# ssh-keygen -f ~/.ssh/known_hosts -R "192.168.1.X"
 # Else installing future systems that take the same dhcp ip could get tricky

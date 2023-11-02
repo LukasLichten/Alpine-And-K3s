@@ -1,5 +1,5 @@
 #!/sbin/openrc-run
-K3S_LOGFILE="${K3S_LOGFILE:-/var/log/${RC_SVCNAME}.log}"
+K3S_LOGFILE="/var/log/k3s.log"
 
 depend() {
     after network-online
@@ -13,7 +13,7 @@ start_pre() {
 supervisor=supervise-daemon
 name=k3s
 command="/usr/local/bin/k3s"
-command_args="server  ${K3S_OPTS} \
+command_args="${K3S_EXEC}  ${K3S_OPTS} \
     >>${K3S_LOGFILE} 2>&1"
 
 output_log=${K3S_LOGFILE}
