@@ -1,6 +1,22 @@
 # Third part of the installer, fixing up things, installing guest agent, pip, vim and htop
 # Made for Alpine 3.18-r0 Standard, millage may vary
 
+# You will need to add the host with the correct anible_host, anible_user and ansible_become_pass within the alpine group in your host.yml
+# If you are writing the host.yml from hand make sure to set ansible_become_method: doas as well
+
+# Your host.yml should look like this
+# alpine:
+# children:
+#   test:
+#     ansible_host: 192.168.1.X
+#     ansible_user: "YourUser"
+#     ansible_become_pass: "YourPassword"
+#     ansible_python_interpreter: auto_silent
+#     ansible_become_method: doas
+
+# After this you can go over to installing k3s
+# either adding it to an existing cluster with k3s-node-install.yml
+# or spinning up a new one with k3s-primary-deploy.yml
 
 - name: Final-Setup
   hosts: alpine

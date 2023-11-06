@@ -19,8 +19,10 @@
 # new_dns: 8.8.8.8
 # timezone: UTC
 # new_user: user
-# new_password_hash: password_hash # Generate via: ansible all -i localhost, -m debug -a 'msg={{ "password" | password_hash("sha512", "mysalt")  }}''
+# new_password_hash: password_hash # Generate via: ansible all -i localhost, -m debug -a 'msg={{ "password" | password_hash("sha512", "mysalt")  }}'
 # github_account: [your name]
+
+# If you set the boot order correctly (Sata first, alpine iso second) then you should be booted into your fresh install upon completion
 
 - name: Installation
   hosts: alpinepreinstall
@@ -64,35 +66,32 @@
   - name: Run-Install
     ansible.builtin.command:
       cmd: "setup-alpine -e -f /install-answers"
-
-  # As the installer set the new network ip we are on borrowed time before the conntection drops
-  # These commands would enable the ejection of the boot disk, but unfortunatly we are not able to execute all before loosing connection
-  
-  # - name: Force-Unmount
-  #   ansible.builtin.command:
-  #     cmd: "umount -a -f"
-  #   ignore_errors: true # this will throw a device busy, while still dismounting
-  # - name: Wait-A-Second
-  #   ansible.builtin.wait_for:
-  #     delay: 5
-  # - name: Eject-Installer
-  #   ansible.builtin.command:
-  #     cmd: "eject"
+    # This command can fail if your installation target is not a sata-drive, edit the templates/alpine-setup-answer-file
+    # (or directly on the machine) to fix this issue (see DISKOPTS in line 56)
 
   - name: Reboot
     ansible.builtin.command: # we can't use ansible.builtin.reboot, as it would expect the machine to come up on the same IP
       cmd: "reboot"
+    ignore_errors: true # It sometimes logs an error, even though it (as far as I have seen) always reboots
 
   - name: Remove-SSH-Known-Hosts
     local_action:
       module: ansible.builtin.command
       cmd: "ssh-keygen -f ~/.ssh/known_hosts -R {{ ansible_host }}"
 
+  - name: wait-for-shutdown
+    ansible.builtin.wait_for:
+      timeout: 15
+
+  - name: insure-the-node-is-down
+    ansible.builtin.ping:
+      data: "Pong"
+    failed_when: ping == "Pong" # If this fails the node has not actually shut down, you need to do it manually
+
 # Now we have a fully installed Alpine Instance,
 # that upon completing the reboot will show up on the new IP, with doas, the user and python ready to take further commands
 # WARNING: root user is still present with an empty password and ssh login
 # This will be addressed in alpine-post-install.yml
 
-# You should remove the old host out of your known hosts via:
-# ssh-keygen -f ~/.ssh/known_hosts -R "192.168.1.X"
-# Else installing future systems that take the same dhcp ip could get tricky
+# The host ip for the installer should automatically be removed from the known hosts list, however may sometimes fail
+# If it fails run ssh-keygen -f ~/.ssh/known_hosts -R 192.168.1.X

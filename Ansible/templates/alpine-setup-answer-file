@@ -52,6 +52,7 @@ NTPOPTS="openntpd"
 # NTPOPTS=none
 
 # Use /dev/sda as a sys disk
+# IMPORTANT: If you don't use a sata drive (for example a VirtIO disk drive is /dev/vda) then you need to edit this
 DISKOPTS="-m sys /dev/sda"
 # DISKOPTS=
 

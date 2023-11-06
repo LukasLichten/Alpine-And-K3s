@@ -9,92 +9,23 @@
 #
 # Even after joining the nodes further commands are required (helm and kubectl) to fully install everything
 
-# This script pulls up an inital node from group init.
-# It is recommended to run this playbook -l init
-# IMPORTANT: But the init node into it's own group seperate from master and agent, after running this script you can put it back into server
+# This script pulls up an inital node named init.
+# It is recommended to run this playbook -l init, as otherwise the basic setup will run on all nodes due to the playbook import,
+# and due to lacking token and the init still spinning up this could cause unfathomable problems
 
 # This script will also setup kubectl config on this local machine,
 # so you just need kubectl and helm from your local package manager and you can spin up deployments
 # Except for the fact all server nodes are tainted, therefore you should really go ahead and spinup another server (an agent preferrable)
 # IMPORTANT: Don't forget to copy the k3s_token from the output of this playbook to your hosts.yml before deploying any further nodes
 
-- name: initial-setup
-  hosts: init
-  tasks:
-  - name: Install-containerd-prematurly
-    community.general.apk:
-     name: containerd
-     no_cache: true
-     state: present
-    become: true
-
-  - name: create-manifest-folder
-    file:
-     path: /var/lib/rancher/k3s/server/manifests/
-     state: directory
-    become: true
-
-  - name: get-rbac-manifest
-    get_url:
-     url: https://kube-vip.io/manifests/rbac.yaml
-     dest: /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
-     force: yes
-    become: true
-
-  - name: add-lines-to-manifest
-    shell:
-     cmd: "echo '---' | tee -a /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml"
-    become: true
-
-  - name: install-containered-ctr # Necessary for Alpine 3.18, because containerd no longer ships with ctr for some reason
-    community.general.apk:
-     name: containerd-ctr
-     no_cache: true
-     state: present
-    become: true
-
-  - name: start-containerd-service
-    service:
-     name: containerd
-     state: started
-    become: true
-
-  - name: get-image
-    shell:
-     cmd: ctr image pull ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
-    become: true
-
-  - name: generate-kubevip-manifest
-    shell:
-     cmd: ctr run --rm --net-host ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }} vip /kube-vip manifest daemonset --interface {{ net_interface }} --address {{ k3s_vip }} --inCluster --taint --controlplane --services --arp --leaderElection | tee -a /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
-    become: true
-
-  - name: del-image
-    shell:
-     cmd: ctr image rm ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
-    become: true
-  
-  - name: stop-containerd-service
-    service:
-     name: containerd
-     state: stopped
-    become: true
-
-  - name: remove-containered-ctr # No longer needed
-    community.general.apk:
-     name: containerd-ctr
-     state: removed
-    become: true
-
-# We do this after setting up kubevip etc because when k3s installed, even if it is stopped, for some reason containerd won't respond anymore to ctr
 - name: run-basic-conf
   import_playbook: k3s-node-install.yml
 
-- name: spinning-up-the-server
+- name: spinning-up-the-init-server
   hosts: init
   tasks:
   - name: conf.d-init
-    template:
+    ansible.builtin.template:
      src: ../templates/k3s/confd-k3s-init
      dest: /etc/conf.d/k3s
     become: true
@@ -116,7 +47,7 @@
     become: true
     register: k3s_token_output
   
-  - name: Why
+  - name: Writing-Token-To-Variable
     ansible.builtin.set_fact:
       k3s_token: "{{ k3s_token_output.stdout_lines[0] }}"
 
@@ -126,7 +57,7 @@
       dest: /etc/conf.d/k3s
     become: true
 
-  - name: Start-K3s
+  - name: Restart-K3s
     ansible.builtin.service:
       name: k3s
       enabled: true

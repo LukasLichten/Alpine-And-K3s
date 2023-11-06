@@ -87,34 +87,6 @@
      force: true
     become: true
 
-  - name: Install-K3s
-    ansible.builtin.shell:
-      cmd: curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_SKIP_START=true sh -
-    become: true
-    args:
-      warn: false
-    
-  - name: Adding-init.d
-    template:
-      src: ../templates/k3s/initd-k3s
-      dest: /etc/init.d/k3s
-    become: true
-
-  - name: Make-Sure-K3s-Is-Stopped
-    service:
-      name: k3s
-      state: stopped
-    become: true
-
-- name: Setting-up-as-server
-  hosts: masters
-  tasks:
-   - name: Setting-Server-Conf.d
-     ansible.builtin.template:
-      src: ../templates/k3s/confd-k3s-server
-      dest: /etc/conf.d/k3s
-     become: true
-
 - name: Setting-up-as-agent
   hosts: agents
   tasks:
@@ -124,12 +96,96 @@
       dest: /etc/conf.d/k3s
      become: true
 
-- name: Starting-The-Node
+- name: Setting-up-as-server
+  hosts: masters,init
+  tasks:
+  # Kube Vip has to be setup on all nodes, including init
+  - name: create-manifest-folder
+    ansible.builtin.file:
+     path: /var/lib/rancher/k3s/server/manifests/
+     state: directory
+    become: true
+
+  - name: get-rbac-manifest
+    ansible.builtin.get_url:
+     url: https://kube-vip.io/manifests/rbac.yaml
+     dest: /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
+     force: yes
+    become: true
+
+  - name: add-lines-to-manifest
+    ansible.builtin.shell:
+     cmd: "echo '---' | tee -a /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml"
+    become: true
+
+  - name: install-containered-ctr # Necessary for Alpine 3.18, because containerd no longer ships with ctr for some reason
+    community.general.apk:
+     name: containerd-ctr
+     no_cache: true
+     state: present
+    become: true
+
+  - name: start-containerd-service
+    ansible.builtin.service:
+     name: containerd
+     state: started
+    become: true
+
+  - name: get-image
+    ansible.builtin.shell:
+     cmd: ctr image pull ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
+    become: true
+
+  - name: generate-kubevip-manifest
+    ansible.builtin.shell:
+     cmd: ctr run --rm --net-host ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }} vip /kube-vip manifest daemonset --interface {{ net_interface }} --address {{ k3s_vip }} --inCluster --taint --controlplane --services --arp --leaderElection | tee -a /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
+    become: true
+
+  - name: del-image
+    ansible.builtin.shell:
+     cmd: ctr image rm ghcr.io/kube-vip/kube-vip:{{ kube_vip_version }}
+    become: true
+  
+  - name: stop-containerd-service
+    ansible.builtin.service:
+     name: containerd
+     state: stopped
+    become: true
+
+  - name: remove-containered-ctr # No longer needed
+    community.general.apk:
+     name: containerd-ctr
+     state: removed
+    become: true
+
+  - name: Setting-Server-Conf.d
+    ansible.builtin.template:
+      src: ../templates/k3s/confd-k3s-server
+      dest: /etc/conf.d/k3s
+    become: true
+
+- name: Installing-K3s
   hosts: kube
   tasks:
-   - name: Start-K3s
-     service:
+  - name: Install-K3s
+    ansible.builtin.shell:
+      cmd: curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_SKIP_START=true sh -
+    become: true
+    args:
+      warn: false
+    
+  - name: Adding-init.d
+    ansible.builtin.template:
+      src: ../templates/k3s/initd-k3s
+      dest: /etc/init.d/k3s
+    become: true
+
+- name: Starting-The-Node
+  hosts: kube,!init
+  tasks:
+  - name: Start-K3s
+    ansible.builtin.service:
       name: k3s
       enabled: true
       state: started
-     become: true
+    become: true
