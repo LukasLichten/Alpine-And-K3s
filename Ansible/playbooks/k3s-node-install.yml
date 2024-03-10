@@ -171,8 +171,6 @@
     ansible.builtin.shell:
       cmd: curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_SKIP_START=true sh -
     become: true
-    args:
-      warn: false
     
   - name: Adding-init.d
     ansible.builtin.template:

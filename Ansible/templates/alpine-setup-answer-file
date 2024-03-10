@@ -24,7 +24,8 @@ iface eth0 inet static
 "
 
 # Search domain of example.com, Google public nameserver
-DNSOPTS="-d {{ new_domain }} {{ new_dns }}"
+# DNSOPTS="-d {{ new_domain }} {{ new_dns }}"
+DNSOPTS="{{ new_dns }}"
 
 # Set timezone to UTC
 #TIMEZONEOPTS="UTC"
